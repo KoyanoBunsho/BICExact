@@ -22,7 +22,7 @@ $$
 ### Hinge number estimation
 
 $$
-k^{(A, B, c)} = \argmin_{0 \leq k \leq n-1}\min_{R^{(k)}, V^{(k)}, H^{(k)}}\sum_{r=1}^{k+1}\{\sum_{i=h_{r - 1}}^{h_{r}-1}||\boldsymbol{a}_i - \boldsymbol{R}_r(\boldsymbol{b}_i + \boldsymbol{v}_r)||^2 + c\}
+k^{(A, B, c)} = argmin_{0 \leq k \leq n-1}\min_{R^{(k)}, V^{(k)}, H^{(k)}}\sum_{r=1}^{k+1}\{\sum_{i=h_{r - 1}}^{h_{r}-1}||\boldsymbol{a}_i - \boldsymbol{R}_r(\boldsymbol{b}_i + \boldsymbol{v}_r)||^2 + c\}
 $$
 
 When $c = \sigma^2q\log n$, $k^{(A, B, c)}$-hinge model minimizes BIC.
@@ -100,7 +100,6 @@ docker exec bel poetry run python eval_result_shibuya.py
 ### CUI
 #### When you execute the command outside the docker container
 ```bash
-cd src
 docker exec bel g++ estimate_hinge_numbers.cpp -o estimate_hinge_numbers -std=c++14 -lstdc++fs -Wall -Wextra -O3 -mtune=native -march=native -mfpmath=both -Werror -fopenmp
 docker exec bel ./estimate_hinge_numbers pdb3hvp.pdb pdb4hvp.pdb A A bic exact
 docker exec bel ./estimate_hinge_numbers pdb3hvp.pdb pdb4hvp.pdb A A bic lh
