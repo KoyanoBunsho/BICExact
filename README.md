@@ -51,6 +51,7 @@ poetry install
 docker exec bel poetry install
 ```
 ### Constructing a simulation dataset
+- Please make sure you downloaded all pdb files in the all_pdb directory before you execute the following command
 - inside the docker container
 ```bash
 poetry run python make_simulation_dataset.py
