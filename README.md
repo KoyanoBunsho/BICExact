@@ -1,36 +1,12 @@
 # BIC Exact and BIC LH
 - Fast and accurate algorithms for estimating the number of hinges in a protein based on information criteria.
+- $O(n^2)$-time exact algorithm, where $n$ is the protein length
+- $O(n)$-time heuristic algorithm, where $n$ is the protein length
 ## Input and Output
 - Input: two conformations of the same protein
 - Output: the number of hinges and the corresponding hinge positions
 ## Methods
 - For details on the methods, please refer to our upcoming paper.
-### Notations
-- $n$: the number of observed data points
-- $H^{(k)} = [h_0, h_1, \dots, h_{k+1}]$: a list of $k + 2$ distinct positive integers
-- $R^{(k)} = [\boldsymbol{R}_1, \dots, \boldsymbol{R}_{k+1}]$: a list of $k+1$ rotation matrices
-- $V^{(k)} = [\boldsymbol{v}_1, \dots, \boldsymbol{v}_{k+1}]$: a list of $k+1$ translation vectors
-- $\boldsymbol{\epsilon}_i = \begin{pmatrix}
-    \epsilon_{i, x}\\ \epsilon_{i, y}\\ \epsilon_{i, z}
-\end{pmatrix} \in \mathbb{R}^3$ be the $i$-th error term
-### $k$-hinge model
-
-$$
-\boldsymbol{y}_i = f_{R^{(k)}, V^{(k)}, H^{(k)}}(\boldsymbol{x}_i, i) + \boldsymbol{\epsilon}_i
-$$
-
-### Hinge number estimation
-
-$$
-k^{(A, B, c)} = argmin_{0 \leq k \leq n-1}\min_{R^{(k)}, V^{(k)}, H^{(k)}}\sum_{r=1}^{k+1}\{\sum_{i=h_{r - 1}}^{h_{r}-1}||\boldsymbol{a}_i - \boldsymbol{R}_r(\boldsymbol{b}_i + \boldsymbol{v}_r)||^2 + c\}
-$$
-
-When $c = \sigma^2q\log n$, $k^{(A, B, c)}$-hinge model minimizes BIC.
-When $c = 2\sigma^2q$, $k^{(A, B, c)}$-hinge model minimizes AIC.
-
-Using the dynamic programming (DP), we can obtain the exact solution in $O(n^2)$-time.
-
-By applying LARSCH algorithm, we can obtain the heuristic solution in $O(n)$-time.
 
 ## Experiments
 - build the docker container
