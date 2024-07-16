@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BIC Exact and BIC LH</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .separator {
+            margin: 20px 0;
+            border-top: 2px solid #000;
+        }
+    </style>
+</head>
+<body>
+    <h1>Hinge number estimation</h1>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <label for="file1">PDB File 1:</label>
+        <input type="file" name="file1" id="file1" required>
+        <br><br>
+        <label for="chain1">Chain ID 1:</label>
+        <input type="text" name="chain1" id="chain1" required>
+        <br><br>
+        <label for="file2">PDB File 2:</label>
+        <input type="file" name="file2" id="file2" required>
+        <br><br>
+        <label for="chain2">Chain ID 2:</label>
+        <input type="text" name="chain2" id="chain2" required>
+        <br><br>
+        <label for="bic">Information Criterion:</label>
+        <select name="bic" id="bic" required>
+            <option value="bic">BIC</option>
+            <option value="aic">AIC</option>
+        </select>
+        <br><br>
+        <label for="exactmo">Exact or LH:</label>
+        <select name="exactmo" id="exactmo" required>
+            <option value="exact">Exact</option>
+            <option value="lh">LH</option>
+        </select>
+        <br><br>
+        <input type="submit" value="Estimate the number of hinges">
+    </form>
+    <div class="separator"></div>
+    {{if .Results}}
+    <h2>Results:</h2>
+    <ul>
+        {{range $key, $value := .Results}}
+        <li><strong>{{ $key }}:</strong> {{ $value }}</li>
+        {{end}}
+    </ul>
+    {{end}}
+</body>
+</html>
