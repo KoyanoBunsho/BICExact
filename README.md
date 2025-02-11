@@ -72,6 +72,10 @@ poetry run python eval_result_shibuya.py
 ```bash
 docker exec bel poetry run python eval_result_shibuya.py
 ```
+### Hinge estimation examples
+```bash
+bash hinge_estimation_example.sh
+```
 
 ## Example usage
 ### CUI

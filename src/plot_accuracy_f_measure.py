@@ -25,21 +25,43 @@ def main():
     )
     simulation_dyndom_df = read_fatcat_dyndom_data(
         "dyndom_simulation_hinge_count_result.csv",
-        "dyndom_simulation_result/dyndom_simulation_execution_time.csv",
+        "dyndom_simulation_result/dyndom_simulation_execution_time_improved.csv",
     )
     simulation_fatcat_df = read_fatcat_dyndom_data(
         "fatcat_simulation_hinge_count_result.csv",
-        "fatcat_simulation_execution_time.csv",
+        "fatcat_simulation_execution_time_improved.csv",
     )
     df_dict = {}
-    df_dict["BIC Exact"] = simulation_rmsdh_bic_df
-    df_dict["BIC LH"] = simulation_fast_rmsdh_bic_df
-    df_dict["AIC Exact"] = simulation_rmsdh_aic_df
-    df_dict["AIC LH"] = simulation_fast_rmsdh_aic_df
+    df_dict["DP based on BIC"] = simulation_rmsdh_bic_df
+    df_dict["LH DP based on BIC"] = simulation_fast_rmsdh_bic_df
+    df_dict["DP based on AIC"] = simulation_rmsdh_aic_df
+    df_dict["LH DP based on AIC"] = simulation_fast_rmsdh_aic_df
     df_dict["DynDom"] = simulation_dyndom_df
     df_dict["FATCAT"] = simulation_fatcat_df
     df_dict["SE"] = simulation_auto_shibuya_df
-    for how in ["hinge_count"]:
+    df_dict["DynDom"]["actual_hinge_cnt_path"] = (
+        df_dict["DynDom"]["q_pdb"]
+        .apply(lambda x: x.split("/")[1])
+        .str.replace(".pdb", "")
+    )
+    df_dict["FATCAT"]["actual_hinge_cnt_path"] = (
+        df_dict["FATCAT"]["q_pdb"]
+        .apply(lambda x: x.split("/")[1])
+        .str.replace(".pdb", "")
+    )
+    df_dict["DynDom"] = pd.merge(
+        df_dict["DynDom"],
+        df_dict["DP based on BIC"][["actual_hinge_cnt_path", "actual_hinge_indices"]],
+        on="actual_hinge_cnt_path",
+        how="left",
+    )
+    df_dict["FATCAT"] = pd.merge(
+        df_dict["FATCAT"],
+        df_dict["DP based on BIC"][["actual_hinge_cnt_path", "actual_hinge_indices"]],
+        on="actual_hinge_cnt_path",
+        how="left",
+    )
+    for how in ["hinge_count", "hinge_detection"]:
         plot_hinge_detection_accuracy(df_dict=df_dict, how=how)
     measure_computation_time(df_dict=df_dict)
 
@@ -65,7 +87,7 @@ def read_simulation_data(file_path):
 
 
 def read_fatcat_dyndom_data(file_path1, file_path2):
-    df1 = pd.read_csv(file_path1).dropna().fillna("")
+    df1 = pd.read_csv(file_path1).fillna("")
     df1["actual_hinge_cnt_path"] = (
         df1["q_pdb"].apply(lambda x: str(x).split("/")[1]).str.replace(".pdb", "")
     )
@@ -81,36 +103,41 @@ def read_fatcat_dyndom_data(file_path1, file_path2):
 def plot_hinge_detection_accuracy(df_dict, how):
     plt.rcParams.update(
         {
-            "font.size": 18,
-            "axes.titlesize": 18,
-            "axes.labelsize": 18,
-            "xtick.labelsize": 18,
-            "ytick.labelsize": 18,
-            "legend.fontsize": 12,
+            "font.size": 30,
+            "axes.titlesize": 30,
+            "axes.labelsize": 30,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 30,
             "lines.markersize": 10,
         }
     )
     marker_styles = {
-        "BIC Exact": "s",
-        "BIC LH": "+",
+        "DP based on BIC": "s",
+        "LH DP based on BIC": "^",
         "FATCAT": "*",
         "DynDom": "v",
-        "AIC Exact": "<",
-        "AIC LH": ">",
+        "DP based on AIC": "<",
+        "LH DP based on AIC": ">",
         "SE": "X",
     }
     colors = plt.cm.get_cmap("tab10", 7)
     color_map = {
-        "BIC Exact": colors(0),
-        "BIC LH": colors(1),
+        "DP based on BIC": colors(0),
+        "LH DP based on BIC": colors(1),
         "FATCAT": colors(2),
         "DynDom": colors(3),
-        "AIC Exact": colors(4),
-        "AIC LH": colors(5),
+        "DP based on AIC": colors(4),
+        "LH DP based on AIC": colors(5),
         "SE": colors(6),
     }
 
-    fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(18, 6))
+    # 3列レイアウトに変更（凡例用の幅を調整）
+    fig, axes = plt.subplots(
+        nrows=1, ncols=3, figsize=(18, 7), gridspec_kw={"width_ratios": [1, 1, 0.2]}
+    )
+    ax1, ax2, ax3 = axes
+
     if how == "hinge_position":
         accuracy_label = "F-measure"
         mae_label = "Precision"
@@ -119,22 +146,171 @@ def plot_hinge_detection_accuracy(df_dict, how):
         mae_label = "MAE"
 
     accuracy_order = [
-        "BIC Exact",
-        "BIC LH",
+        "DP based on BIC",
+        "LH DP based on BIC",
+        "DP based on AIC",
+        "LH DP based on AIC",
         "FATCAT",
         "DynDom",
-        "AIC Exact",
-        "AIC LH",
+        "SE",
+    ]
+
+    for method in accuracy_order:
+        acc_df = df_dict[method]
+        mae_df = df_dict[method]
+
+        accuracy_res = []
+        mae_res = []
+
+        for cnt in range(0, 6):
+            tmp_acc = acc_df[acc_df["actual_hinge_cnt"] == cnt]
+            tmp_mae = mae_df[mae_df["actual_hinge_cnt"] == cnt]
+
+            accuracy = (
+                len(tmp_acc[tmp_acc["actual_hinge_cnt"] == tmp_acc["hinge_cnt"]])
+                / len(tmp_acc)
+                if len(tmp_acc) > 0
+                else 0
+            )
+            mae = (
+                mean_absolute_error(tmp_mae["actual_hinge_cnt"], tmp_mae["hinge_cnt"])
+                if len(tmp_mae) > 0
+                else 0
+            )
+
+            accuracy_res.append(accuracy)
+            mae_res.append(mae)
+
+        # Accuracy plot
+        ax1.plot(
+            range(0, 6),
+            accuracy_res,
+            label=method,
+            marker=marker_styles[method],
+            color=color_map[method],
+        )
+
+        # MAE plot
+        ax2.plot(
+            range(0, 6),
+            mae_res,
+            label=method,
+            marker=marker_styles[method],
+            color=color_map[method],
+        )
+
+    ax1.set_xlabel("True hinge number")
+    ax1.set_ylabel(accuracy_label)
+    ax1.set_xlim(0, 5)
+    ax1.set_ylim(0, 1)
+    ax2.set_xlim(0, 5)
+    ax2.set_ylim(0)
+    ax2.set_xlabel("True hinge number")
+    ax2.set_ylabel(mae_label)
+    ax1.text(
+        0.5,
+        -0.3,
+        f"({chr(97 + 0)})",
+        transform=ax1.transAxes,
+        fontsize=30,
+        va="center",
+        ha="center",
+    )
+    ax2.text(
+        0.5,
+        -0.3,
+        f"({chr(97 + 1)})",
+        transform=ax2.transAxes,
+        fontsize=30,
+        va="center",
+        ha="center",
+    )
+    # 3列目（凡例専用）の設定
+    ax3.axis("off")
+    handles = [
+        plt.Line2D(
+            [0],
+            [0],
+            marker=marker_styles[method],
+            color="w",
+            markerfacecolor=color_map[method],
+            markersize=10,
+            label=method,
+        )
+        for method in accuracy_order
+    ]
+    ax3.legend(handles=handles, loc="center", frameon=False, title="Methods")
+    plt.tight_layout()
+    plt.savefig(
+        f"figures/{accuracy_label}_simulation_data_{how}.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.savefig(
+        f"figures/{accuracy_label}_simulation_data_{how}.svg",
+        format="svg",
+        bbox_inches="tight",
+    )
+    plt.close()
+
+
+def plot_hinge_detection_accuracy_old(df_dict, how):
+    plt.rcParams.update(
+        {
+            "font.size": 30,
+            "axes.titlesize": 30,
+            "axes.labelsize": 30,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 30,
+            "lines.markersize": 10,
+        }
+    )
+    marker_styles = {
+        "DP based on BIC": "s",
+        "LH DP based on BIC": "^",
+        "FATCAT": "*",
+        "DynDom": "v",
+        "DP based on AIC": "<",
+        "LH DP based on AIC": ">",
+        "SE": "X",
+    }
+    colors = plt.cm.get_cmap("tab10", 7)
+    color_map = {
+        "DP based on BIC": colors(0),
+        "LH DP based on BIC": colors(1),
+        "FATCAT": colors(2),
+        "DynDom": colors(3),
+        "DP based on AIC": colors(4),
+        "LH DP based on AIC": colors(5),
+        "SE": colors(6),
+    }
+
+    fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(30, 6))
+    if how == "hinge_position":
+        accuracy_label = "F-measure"
+        mae_label = "Precision"
+    else:
+        accuracy_label = "Accuracy"
+        mae_label = "MAE"
+
+    accuracy_order = [
+        "DP based on BIC",
+        "LH DP based on BIC",
+        "FATCAT",
+        "DynDom",
+        "DP based on AIC",
+        "LH DP based on AIC",
         "SE",
     ]
     mae_order = [
         "SE",
-        "AIC Exact",
-        "AIC LH",
+        "DP based on AIC",
+        "LH DP based on AIC",
         "DynDom",
         "FATCAT",
-        "BIC Exact",
-        "BIC LH",
+        "DP based on BIC",
+        "LH DP based on BIC",
     ]
 
     accuracy_lines = []
@@ -240,19 +416,19 @@ def plot_hinge_detection_accuracy(df_dict, how):
 
     ax1.text(
         0.5,
-        -0.2,
-        f"({chr(97 + 0)}) Accuracy of all methods against the true hinge number",
+        -1,
+        f"({chr(97 + 0)}) Accuracy against the true hinge number",
         transform=ax1.transAxes,
-        fontsize=18,
+        fontsize=30,
         va="center",
         ha="center",
     )
     ax2.text(
         0.5,
-        -0.2,
-        f"({chr(97 + 1)}) MAE of all methods against the true hinge number",
+        -1,
+        f"({chr(97 + 1)}) MAE against the true hinge number",
         transform=ax2.transAxes,
-        fontsize=18,
+        fontsize=30,
         va="center",
         ha="center",
     )
@@ -270,14 +446,14 @@ def plot_hinge_detection_accuracy(df_dict, how):
     ax2.set_xlabel("True hinge number")
     ax2.legend(mae_lines, mae_order, loc="best")
     fig.tight_layout()
-    plt.savefig(f"figures/{accuracy_label}_simulation_data.png")
-    plt.savefig(f"figures/{accuracy_label}_simulation_data.svg", format="svg")
+    plt.savefig(f"figures/{accuracy_label}_simulation_data_{how}.png")
+    plt.savefig(f"figures/{accuracy_label}_simulation_data_{how}.svg", format="svg")
     plt.clf()
     plt.close()
     results_df = pd.DataFrame(results)
-    results_df.to_csv("figures/accuracy_results.csv", index=False)
+    results_df.to_csv(f"figures/accuracy_results_{how}.csv", index=False)
     results_mae_df = pd.DataFrame(results_mae)
-    results_mae_df.to_csv("figures/mae_results.csv", index=False)
+    results_mae_df.to_csv(f"figures/mae_results_{how}.csv", index=False)
 
 
 def calc_ans_dyndom(exp, detect, d=0):
@@ -314,6 +490,8 @@ def calc_acc_df(df, heuristic_df):
     df["hinge_index"] = df["hinge_index"].fillna("")
     heuristic_df["hinge_index"] = heuristic_df["hinge_index"].fillna("")
     f_measure_dict = {}
+    # バグがないか検算する
+    # f-measure, precision, recallを全て載せる
     for d in [3]:
         acc = []
         for i in range(len(df)):
