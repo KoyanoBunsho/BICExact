@@ -9,11 +9,25 @@
 #include <memory>
 #include <numeric>
 #include <omp.h>
+#include <set>
 #include <unordered_map>
 constexpr double INF = std::numeric_limits<double>::infinity();
 constexpr double eps = std::numeric_limits<double>::epsilon();
 // https://sotanishy.github.io/cp-library-cpp/dp/smawk.cpp
+Eigen::Vector3d rotationMatrixToEulerAngles(const Eigen::MatrixXd &R) {
+  double yaw, pitch, roll;
+  if (std::abs(R(2, 0)) < 1.0) {
+    pitch = std::asin(-R(2, 0));
+    roll = std::atan2(R(2, 1), R(2, 2));
+    yaw = std::atan2(R(1, 0), R(0, 0));
+  } else {
+    pitch = (R(2, 0) < 0 ? M_PI / 2 : -M_PI / 2);
+    roll = std::atan2(-R(0, 1), R(1, 1));
+    yaw = 0.0;
+  }
 
+  return Eigen::Vector3d(yaw, pitch, roll);
+}
 template <typename T>
 std::vector<int> smawk(int n, int m, std::function<T(int, int)> lookUpij) {
   auto smawkSub = [&](auto &smawkSub, const std::vector<int> &row,
@@ -336,7 +350,8 @@ public:
   }
 
   inline double calcSubSD(const double &pTp_sub, const double &qTq_sub,
-                          const Eigen::Matrix3Xd &H_sub) {
+                          const Eigen::Matrix3Xd &H_sub,
+                          const bool showR = false) {
     /*
     Calculate SD of a coordination pair between the index i and j
     sd = p^Tp + q^Tq - 2 trace(RH)
@@ -350,12 +365,17 @@ public:
     (d > 0.0) ? d = 1.0 : d = -1.0;
     I(2, 2) = d;
     Eigen::MatrixXd RH = V * I * U_T * H_sub; // R = V * I * U_T
+    if (showR) {
+      Eigen::MatrixXd R = V * I * U_T;
+      std::cout << "Euler angle" << std::endl;
+      std::cout << rotationMatrixToEulerAngles(R) << std::endl;
+    }
     double sub_sd = pTp_sub + qTq_sub - 2 * RH.trace();
     (sub_sd > 0.0) ? sub_sd = sub_sd : sub_sd = 0.0;
     return sub_sd;
   }
 
-  inline double calcSDij(int i, int j) {
+  inline double calcSDij(int i, int j, bool showV = false) {
     double aTa_sub = aTa_acc[j] - aTa_acc[i - 1];
     double bTb_sub = bTb_acc[j] - bTb_acc[i - 1];
     Eigen::Matrix3Xd baT_sub = baT_acc[j] - baT_acc[i - 1];
@@ -372,10 +392,14 @@ public:
     double qTq_sub = bTb_sub - b_sub.transpose() * b_bar -
                      b_bar.transpose() * b_sub +
                      (j - i + 1) * b_bar.transpose() * b_bar;
-    double sub_sd_ij = calcSubSD(pTp_sub, qTq_sub, H_sub);
+    if (showV) {
+      std::cout << "i: " << i << ", j: " << j << std::endl;
+      std::cout << "Translation vector" << std::endl;
+      std::cout << b_bar - a_bar << std::endl;
+    }
+    double sub_sd_ij = calcSubSD(pTp_sub, qTq_sub, H_sub, showV);
     return sub_sd_ij;
   }
-
   int backTrackDP(std::vector<int> backtracking_table,
                   std::vector<int> &hinge_index_vec, int hinge_index,
                   int hinge_cnt) {
@@ -511,7 +535,7 @@ public:
     rmsdh_hinge_cnt_result.hinge_index_vec = hinge_index_vec;
     return rmsdh_hinge_cnt_result;
   }
-  RMSDhHingeCnt CalcRMSDh() {
+  RMSDhHingeCnt CalcRMSDh(bool showRV = false) {
     /*
     A: Protein coordinates matrix (3 x n)
     B: Protein coordinates matrix (3 x n)
@@ -570,6 +594,88 @@ public:
     rmsdh_hinge_cnt_result.rmsdh_result = rmsdh_result;
     rmsdh_hinge_cnt_result.hinge_cnt = hinge_cnt;
     rmsdh_hinge_cnt_result.hinge_index_vec = hinge_index_vec;
+    if (showRV) {
+      std::vector<int> hinge_index_vec_cp = hinge_index_vec;
+      std::reverse(hinge_index_vec_cp.begin(), hinge_index_vec_cp.end());
+      hinge_index_vec_cp.insert(hinge_index_vec_cp.begin(), 1);
+      hinge_index_vec_cp.push_back(n + 1);
+      for (int i = 0; i < (int)hinge_index_vec_cp.size() - 1; i++) {
+        calcSDij(hinge_index_vec_cp[i], hinge_index_vec_cp[i + 1] - 1, true);
+      }
+    }
+    return rmsdh_hinge_cnt_result;
+  }
+  RMSDhHingeCnt CalcRMSDhPruning() {
+    /*
+    A: Protein coordinates matrix (3 x n)
+    B: Protein coordinates matrix (3 x n)
+    n: the number of coordinate pairs
+    c: hyperparameter to determine whether to add a hinge or not
+
+    DP definition is as follows.
+    OPT(j) = min_{1 <= i <= j} {sd_{ij} + c + OPT(i - 1)}
+    OPT(0) = -c
+    OPT(j) is determined from the index 0 to n
+    Final RMSDh = sqrt((OPT(n) - ck) / n)
+    k: the number of hinges
+
+    Precomputed values are as follows
+    a, b, a^T * a, b^T * b, b * a^T
+
+    H    = qp^T
+         = (b - b_bar)(a - a_bar)^T
+         = b * a^T - b * a_bar^T - b_bar * a^T + b_bar * a_bar^T
+    p^Tp = (a - a_bar)^T(a - a_bar)
+         =  a^T * a - a^T * a_bar - a_bar^T * a + a_bar^T * a_bar
+    q^Tq = (b - b_bar)^T(b - b_bar)
+         =  b^T * b - b^T * b_bar - b_bar^T * b + b_bar^T * b_bar
+    */
+    std::vector<double> dp(n + 1);
+    std::vector<std::vector<int>> hinge_index_vec(n + 1, std::vector<int>());
+    std::vector<std::set<int>> possible_hinge_indices(n + 1);
+    possible_hinge_indices[1].insert(0);
+    dp[0] = -c;
+    double sub_sd;
+    for (int j = 1; j < n + 1; j++) {
+      double ans = INF;
+      int min_index = 0;
+      for (int possible_hinge : possible_hinge_indices[j]) {
+        sub_sd = calcSDij(possible_hinge + 1, j);
+        if (dp[possible_hinge] + sub_sd + c < ans) {
+          ans = dp[possible_hinge] + sub_sd + c;
+          min_index = possible_hinge;
+        }
+      }
+      dp[j] = ans;
+      for (int val : hinge_index_vec[min_index]) {
+        hinge_index_vec[j].push_back(val + 1);
+      }
+      if (min_index > 0) {
+        hinge_index_vec[j].push_back(min_index + 1);
+      }
+      for (int possible_hinge : possible_hinge_indices[j]) {
+        sub_sd = calcSDij(possible_hinge + 1, j);
+        if (dp[possible_hinge] + sub_sd < dp[j] && j + 1 <= n) {
+          possible_hinge_indices[j + 1].insert(possible_hinge);
+        }
+      }
+      if (j + 1 <= n) {
+        possible_hinge_indices[j + 1].insert(j);
+      }
+    }
+
+    double rmsdh_result;
+    int hinge_cnt = hinge_index_vec[n].size();
+    dp[n] -= (hinge_cnt * c);
+    RMSDhHingeCnt rmsdh_hinge_cnt_result;
+    if (dp[n] < 0) {
+      rmsdh_result = 0.0;
+    } else {
+      rmsdh_result = std::sqrt(dp[n] / n);
+    }
+    rmsdh_hinge_cnt_result.rmsdh_result = rmsdh_result;
+    rmsdh_hinge_cnt_result.hinge_cnt = hinge_cnt;
+    rmsdh_hinge_cnt_result.hinge_index_vec = hinge_index_vec[n];
     return rmsdh_hinge_cnt_result;
   }
   RMSDhHingeCnt CalcMyBIC() {

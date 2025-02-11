@@ -46,10 +46,10 @@ def main():
         "rmsdh_result/shibuya_fast_rmsdh_aic_0.894893.csv"
     ).fillna("")
     dyndom_execution_time = pd.read_csv(
-        "all_pdb/dyndom_execution_time_shibuya.csv"
+        "all_pdb/dyndom_execution_time_shibuya_improved.csv"
     ).rename(columns={"execution_time": "exec_time (s)"})
     fatcat_execution_time = pd.read_csv(
-        "all_pdb/fatcat_execution_time_shibuya.csv"
+        "all_pdb/fatcat_execution_time_shibuya_improved.csv"
     ).rename(columns={"execution_time": "exec_time (s)"})
     methods = {
         "aic": rmsdh_aic["hinge_index"].tolist(),
@@ -79,6 +79,13 @@ def main():
         f"FATCAT: {format_stats(results['FATCAT'])}\n"
         f"DynDom: {format_stats(results['DynDom'])}\n"
     )
+    calc_ans_shibuya(
+        rmsdh_bic["hinge_index"],
+        fast_rmsdh_bic["hinge_index"],
+        rmsdh_aic["hinge_index"],
+        fast_rmsdh_aic["hinge_index"],
+        auto_shibuya["hinge_index"],
+    )
     measure_comp_time(comp_time_dict)
 
 
@@ -106,6 +113,71 @@ def measure_comp_time(comp_time_dict):
         print(
             f"{method}: average computation time is {format_precision(df['exec_time (s)'].mean())}"
         )
+
+
+def calc_ans_shibuya(bic_exact, bic_lh, aic_exact, aic_lh, se, d=3):
+    method_f_measure_list = []
+    for method, method_list in {
+        "BIC Exact": bic_exact,
+        "BIC LH": bic_lh,
+        "AIC Exact": aic_exact,
+        "AIC LH": aic_lh,
+        "SE": se,
+        "FATCAT": fatcat_list,
+        "DynDom": dyndom_list,
+    }.items():
+        TP = 0
+        FP = 0
+        FN = 0
+        ans_df = pd.DataFrame(calc_ans_tp(method_list, d=d))
+        TP = ans_df["TP"].sum()
+        FP = ans_df["FP"].sum()
+        FN = ans_df["FN"].sum()
+        precision = TP / (TP + FP) if (TP + FP) != 0 else 0
+        recall = TP / (TP + FN) if (TP + FN) != 0 else 0
+        f_measure = (
+            (2 * precision * recall) / (precision + recall)
+            if (precision + recall) != 0
+            else 0
+        )
+        method_f_measure_list.append(
+            {
+                "method": method,
+                "d": d,
+                "F-measure": f_measure,
+                "Precision": precision,
+                "Recall": recall,
+            }
+        )
+        print(method, "%.3f" % f_measure, "&", "%.3f" % precision, "&", "%.3f" % recall)
+
+
+def calc_ans_tp(detect_method_list, d=3):
+    ans_list = []
+    for i in range(len(expert_annotated_list)):
+        exp = expert_annotated_list[i]
+        detect = detect_method_list[i]
+        true_hinge_indices = exp.split(" : ")
+        detected_hinge_indices = detect.split(" : ")
+        TP = 0
+        FP = 0
+        FN = 0
+        if detected_hinge_indices != [""]:
+            detected_ranges = [
+                (int(label) - d, int(label) + d) for label in detected_hinge_indices
+            ]
+        else:
+            detected_ranges = []
+        for true in true_hinge_indices:
+            if any(lower <= int(true) <= upper for (lower, upper) in detected_ranges):
+                TP += 1
+            else:
+                FN += 1
+        for lower, upper in detected_ranges:
+            if not any(lower <= int(true) <= upper for true in true_hinge_indices):
+                FP += 1
+        ans_list.append({"TP": TP, "FP": FP, "FN": FN})
+    return ans_list
 
 
 if __name__ == "__main__":
