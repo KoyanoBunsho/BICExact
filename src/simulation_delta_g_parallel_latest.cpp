@@ -11,17 +11,13 @@
 namespace fs = std::experimental::filesystem;
 
 int main(int argc, char **argv) {
-  double sigma;
   bool is_heuristic = false;
   std::string save_method_name;
-  if (argc > 1) {
-    sigma = std::stod(argv[1]) / sqrt(3);
-  }
   std::string coord_path = "coord_csv_simulation/";
   std::ofstream myfile;
   std::string simulation_data_path = "simulation_data/";
   std::string simulation_data_info_path = "simulation_data_info/";
-  std::string input_file_path = std::string(argv[2]);
+  std::string input_file_path = std::string(argv[1]);
   std::ifstream input_file(input_file_path);
   std::string save_name = "rmsdh_result/simulation_delta_g_" + input_file_path;
   myfile.open(save_name);
