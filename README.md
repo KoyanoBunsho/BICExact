@@ -13,6 +13,7 @@
 ## Web application
 The repository includes a React + TypeScript frontend and a Go backend.
 
+- Live demo: https://bicexact.onrender.com/
 - Frontend: `frontend/`
 - Backend: `src/main.go`
 - Estimator executable: `src/estimate_hinge_numbers`
