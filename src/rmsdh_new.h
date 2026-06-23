@@ -1360,7 +1360,29 @@ public:
       return true;
     }
   }
-
+  double calcDeltaG() {
+    std::vector<std::vector<double>> delta_g_dp(n + 1,
+                                                std::vector<double>(n + 1));
+    for (int i = 1; i < n; i++) {
+      for (int j = i + 1; j <= n; j++) {
+        delta_g_dp[i][j] = calcSDij(i, j);
+      }
+    }
+    double delta_g = 0.0;
+#pragma omp parallel for collapse(4) reduction(max : delta_g) num_threads(80)
+    for (int i = 1; i < n; i++) {
+      for (int j = i + 1; j < n; j++) {
+        for (int k = j + 1; k < n; k++) {
+          for (int l = k + 1; l <= n; l++) {
+            delta_g =
+                std::max(delta_g, delta_g_dp[i][k] + delta_g_dp[j][l] -
+                                      delta_g_dp[i][l] - delta_g_dp[j][k]);
+          }
+        }
+      }
+    }
+    return delta_g;
+  }
   double calcMongeRate() {
     int monge_cnt = 0;
     int total_cnt = 0;
