@@ -8,10 +8,10 @@ services:
       dockerfile: Dockerfile
 
     tty: true
-    command: /bin/bash
+    command: ./rmsdapp
 
     volumes:
       - ./src:/usr/src
       - $HOME/go:/root/go
     ports:
-      - "3300:8080"
+      - "8080:8080"

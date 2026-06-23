@@ -1,7 +1,7 @@
 #!/bin/bash
 
-g++ prmsdh_postprocessing_experiment.cpp -o prmsdh_postprocessing_experiment -std=c++14 -lstdc++fs -Wall -Wextra -O3 -mtune=native -march=native -mfpmath=both -Werror -fopenmp
-g++ shibuya_auto_rmsdhk.cpp -o shibuya_auto_rmsdhk -std=c++14 -lstdc++fs -Wall -Wextra -O3 -mtune=native -march=native -mfpmath=both -Werror -fopenmp
+g++ prmsdh_postprocessing_experiment.cpp -o prmsdh_postprocessing_experiment -std=c++14 -lstdc++fs -Wall -Wextra -O3 -Werror -fopenmp
+g++ shibuya_auto_rmsdhk.cpp -o shibuya_auto_rmsdhk -std=c++14 -lstdc++fs -Wall -Wextra -O3 -Werror -fopenmp
 
 echo "-----RMSDh-----"
 locations=("shibuya")

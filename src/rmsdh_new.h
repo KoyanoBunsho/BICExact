@@ -152,7 +152,7 @@ template <class T> class larsch {
       cur_row += 1;
       const auto cs = [&]() -> std::vector<int> {
         if (cur_row_ == 0) {
-          return {{0}};
+          return {0};
         } else {
           return {{2 * cur_row_ - 1, 2 * cur_row_}};
         }
@@ -371,7 +371,9 @@ public:
       std::cout << rotationMatrixToEulerAngles(R) << std::endl;
     }
     double sub_sd = pTp_sub + qTq_sub - 2 * RH.trace();
-    (sub_sd > 0.0) ? sub_sd = sub_sd : sub_sd = 0.0;
+    if (sub_sd <= 0.0) {
+      sub_sd = 0.0;
+    }
     return sub_sd;
   }
 

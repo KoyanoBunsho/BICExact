@@ -1,7 +1,7 @@
 #!/bin/bash
 
-g++ simulation_rmsdh_bic_parallel_latest.cpp -o simulation_rmsdh_bic_parallel_latest -std=c++14 -lstdc++fs -Wall -Wextra -O3 -mtune=native -march=native -mfpmath=both -Werror -fopenmp
-g++ simulation_auto_shibuya_parallel_latest.cpp -o simulation_auto_shibuya_parallel_latest -std=c++14 -lstdc++fs -Wall -Wextra -O3 -mtune=native -march=native -mfpmath=both -Werror -fopenmp
+g++ simulation_rmsdh_bic_parallel_latest.cpp -o simulation_rmsdh_bic_parallel_latest -std=c++14 -lstdc++fs -Wall -Wextra -O3 -Werror -fopenmp
+g++ simulation_auto_shibuya_parallel_latest.cpp -o simulation_auto_shibuya_parallel_latest -std=c++14 -lstdc++fs -Wall -Wextra -O3 -Werror -fopenmp
 
 echo "-----RMSDh-----"
 model_types=("aic" "bic")

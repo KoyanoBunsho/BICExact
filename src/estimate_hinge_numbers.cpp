@@ -1,5 +1,9 @@
+#if defined(__GNUC__) && !defined(__clang__) && (defined(__x86_64__) || defined(__i386__))
 #pragma GCC target("avx2")
+#endif
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC optimize("unroll-loops")
+#endif
 
 #include "rmsdh_new.h"
 #include <algorithm>
