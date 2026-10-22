@@ -84,6 +84,12 @@ Open http://localhost:8080/ in your browser.
 
 The production container runs as UID 10001 and contains only the server, estimator, frontend, and runtime libraries. Compose binds port 8080 to localhost and limits CPU, memory, processes, and temporary storage. Application files are read-only. Use the separate research container below for compilation and Python experiments.
 
+Before deploying to Render, verify the `linux/amd64` build, including when developing on an ARM Mac. Compiler diagnostics can differ between architectures.
+
+```bash
+docker build --platform linux/amd64 -t bicexact:amd64 .
+```
+
 ### Request limits and security checks
 
 Both upload endpoints accept a maximum of 64 MiB per request, two concurrent requests, and a 30-second calculation timeout. Uploads must be nonempty `.pdb`, `.ent`, or `.cif` files; chain IDs contain 1–8 ASCII letters or digits. Structures must have matching CA coordinates and at most 10,000 CA residues in each selected chain. Cross-origin browser submissions are rejected. Invalid inputs return 400, oversized requests 413, busy capacity 503, and calculation timeouts 504.

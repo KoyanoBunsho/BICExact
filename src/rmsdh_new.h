@@ -380,14 +380,16 @@ public:
   inline double calcSDij(int i, int j, bool showV = false) {
     double aTa_sub = aTa_acc[j] - aTa_acc[i - 1];
     double bTb_sub = bTb_acc[j] - bTb_acc[i - 1];
-    Eigen::Matrix3Xd baT_sub = baT_acc[j] - baT_acc[i - 1];
+    Eigen::Matrix3d baT_sub = baT_acc[j] - baT_acc[i - 1];
     Eigen::Vector3d a_sub = a_acc[j] - a_acc[i - 1];
     Eigen::Vector3d b_sub = b_acc[j] - b_acc[i - 1];
     Eigen::Vector3d a_bar = calcCentroid(a_acc, i, j);
     Eigen::Vector3d b_bar = calcCentroid(b_acc, i, j);
-    Eigen::Matrix3Xd H_sub = baT_sub - b_sub * a_bar.transpose() -
-                             b_bar * a_sub.transpose() +
-                             (j - i + 1) * b_bar * a_bar.transpose();
+    // Covariance is always 3x3. Keep both dimensions fixed so Eigen's
+    // vectorized outer products have compile-time bounds on x86 as well.
+    Eigen::Matrix3d H_sub = baT_sub - b_sub * a_bar.transpose() -
+                           b_bar * a_sub.transpose() +
+                           (j - i + 1) * b_bar * a_bar.transpose();
     double pTp_sub = aTa_sub - a_sub.transpose() * a_bar -
                      a_bar.transpose() * a_sub +
                      (j - i + 1) * a_bar.transpose() * a_bar;
