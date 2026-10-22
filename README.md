@@ -20,14 +20,14 @@ The repository includes a React + TypeScript frontend and a Go backend.
 - API endpoint: `POST /api/estimate`
 
 ### Prerequisites
-- Go 1.20+
+- Go 1.26.10+ (use a supported release with current security patches)
 - Node.js and npm
 - A C++14 compiler with OpenMP support
   - Linux/Docker: `g++`
   - macOS: Homebrew `llvm`, `libomp`, and `eigen`
 
 ### Local quick start
-Build the estimator executable first.
+Rebuild the estimator executable after updating the source, including security updates. The bundled executable is for macOS ARM64; Linux deployments are built from source by Docker.
 
 On Linux or inside the Docker container:
 
@@ -48,7 +48,7 @@ Install and build the React frontend.
 
 ```bash
 cd ../frontend
-npm install
+npm ci
 npm run build
 ```
 
@@ -67,7 +67,7 @@ For UI development, keep the Go server running on port `8080` and start Vite in 
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -77,21 +77,44 @@ Open the Vite URL printed in the terminal. API requests to `/api` are proxied to
 Build and run the containerized web application.
 
 ```bash
-docker-compose up -d
+docker compose up -d --build
 ```
 
 Open http://localhost:8080/ in your browser.
 
-To work inside the container:
+The production container runs as UID 10001 and contains only the server, estimator, frontend, and runtime libraries. Compose binds port 8080 to localhost and limits CPU, memory, processes, and temporary storage. Application files are read-only. Use the separate research container below for compilation and Python experiments.
+
+### Request limits and security checks
+
+Both upload endpoints accept a maximum of 64 MiB per request, two concurrent requests, and a 30-second calculation timeout. Uploads must be nonempty `.pdb`, `.ent`, or `.cif` files; chain IDs contain 1–8 ASCII letters or digits. Structures must have matching CA coordinates and at most 10,000 CA residues in each selected chain. Cross-origin browser submissions are rejected. Invalid inputs return 400, oversized requests 413, busy capacity 503, and calculation timeouts 504.
+
+Run the regression tests after building the estimator:
 
 ```bash
-docker exec -it bel bash
+cd src
+go test -race ./...
+cd ..
+BICEXACT_ESTIMATOR=src/estimate_hinge_numbers python3 -m unittest discover -s tests -v
 ```
 
-## Experiments
-- build the docker container
+Audit the locked dependencies:
+
 ```bash
-docker-compose up -d
+cd frontend
+npm audit
+cd ../src
+go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+cd ..
+uv run --with pip-audit scripts/audit_python_dependencies.py
+```
+
+The 2026-10-22 audit found no npm or Python vulnerabilities and no vulnerabilities in imported Go packages. Go still reports [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) at module level: the unmaintained `golang.org/x/crypto/openpgp` package has no fixed version. This application does not import that package; `govulncheck` reports no reachable affected symbols. These checks do not constitute an OS package vulnerability scan.
+
+## Experiments
+- Stop the web container before starting the research container, which also uses the name `bel`. The research environment includes compilers, Python 3.12, and Poetry 2.2.1 and mounts `src/` for experiment outputs.
+```bash
+docker compose down
+docker compose -f docker-compose.experiments.yml up -d --build
 ```
 - If you want to work inside the docker container, execute the following command
 ```bash
@@ -100,11 +123,11 @@ docker exec -it bel bash
 ### Install libraries for Python
 - inside the docker container
 ```bash
-poetry install
+poetry install --no-root
 ```
   - outside the docker container
 ```bash
-docker exec bel poetry install
+docker exec bel poetry install --no-root
 ```
 ### Constructing a simulation dataset
 - Please make sure you downloaded all pdb files in the all_pdb directory before you execute the following command

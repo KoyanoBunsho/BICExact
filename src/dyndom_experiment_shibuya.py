@@ -42,10 +42,10 @@ def run_dyndom(pair):
     pdb1 = pair["p_pdb"]
     pdb2 = pair["q_pdb"]
     output_filename = f"{pdb1}_{pdb2}"
-    command = f"./DynDom {output_filename}.w5.command"
+    command = ["./DynDom", f"{output_filename}.w5.command"]
     start_time = time.time()
     try:
-        subprocess.run(command, shell=True, check=True)
+        subprocess.run(command, check=True)
         duration = time.time() - start_time
         print(f"Command executed successfully: {command}")
         return duration

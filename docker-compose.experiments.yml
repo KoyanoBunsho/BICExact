@@ -1,0 +1,12 @@
+services:
+  experiments:
+    container_name: bel
+    build:
+      context: .
+      target: experiments
+    working_dir: /app/src
+    environment:
+      POETRY_VIRTUALENVS_IN_PROJECT: "false"
+    command: sleep infinity
+    volumes:
+      - ./src:/app/src

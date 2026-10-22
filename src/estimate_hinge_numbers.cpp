@@ -1,3 +1,5 @@
+//go:build ignore
+
 #if defined(__GNUC__) && !defined(__clang__) && (defined(__x86_64__) || defined(__i386__))
 #pragma GCC target("avx2")
 #endif
@@ -14,6 +16,7 @@
 #include <numeric>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <tuple>
 #include <vector>
 
@@ -22,7 +25,11 @@ private:
   std::string pdb_filename;
 
 public:
-  PDBReader(const std::string &filename) : pdb_filename(filename) {}
+  PDBReader(const std::string &filename) : pdb_filename(filename) {
+    if (extension != ".pdb" && extension != ".ent" && extension != ".cif") {
+      throw std::invalid_argument("Unsupported structure format");
+    }
+  }
   std::string extension = get_file_extension();
   std::set<int> get_residue_numbers(const std::string &chain_id) const {
     std::ifstream file(pdb_filename);
@@ -36,7 +43,7 @@ public:
         std::getline(ss, field, ' ');
         std::string atom_name;
         std::string chain;
-        int res_num;
+        int res_num = 0;
         if (field == "ATOM") {
           if (extension == ".pdb" || extension == ".ent") {
             ss >> field;
@@ -44,9 +51,10 @@ public:
             ss >> field;
             ss >> chain;
             ss >> res_num;
-            if (chain == chain_id || (isdigit(chain_id[0]) &&
-                                      chain == std::to_string(chain_id[0]))) {
-
+            if (!ss) {
+              throw std::invalid_argument("Malformed atom record");
+            }
+            if (chain == chain_id && atom_name == "CA") {
               residue_numbers.insert(res_num);
             }
           } else if (extension == ".cif") {
@@ -58,16 +66,21 @@ public:
             ss >> chain;
             ss >> field;
             ss >> res_num;
-            if (chain == chain_id || (isdigit(chain_id[0]) &&
-                                      chain == std::to_string(chain_id[0]))) {
+            if (!ss) {
+              throw std::invalid_argument("Malformed atom record");
+            }
+            if (chain == chain_id && atom_name == "CA") {
               residue_numbers.insert(res_num);
             }
+          }
+          if (residue_numbers.size() > 10000) {
+            throw std::invalid_argument("Too many residues");
           }
         }
       }
       file.close();
     } else {
-      std::cout << "Unable to open file: " << pdb_filename << std::endl;
+      throw std::invalid_argument("Unable to open structure");
     }
 
     return residue_numbers;
@@ -95,8 +108,8 @@ public:
         if (field == "ATOM") {
           std::string atom_name;
           std::string chain;
-          int res_num;
-          double x, y, z;
+          int res_num = 0;
+          double x = 0, y = 0, z = 0;
           if (extension == ".pdb" || extension == ".ent") {
             ss >> field;
             ss >> atom_name;
@@ -116,9 +129,11 @@ public:
             ss >> field;
             ss >> x >> y >> z;
           }
-          if (atom_name == "CA" &&
-              (chain == chain_id || (isdigit(chain_id[0]) &&
-                                     chain == std::to_string(chain_id[0])))) {
+          if (!ss || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) ||
+              std::abs(x) > 1e6 || std::abs(y) > 1e6 || std::abs(z) > 1e6) {
+            throw std::invalid_argument("Invalid atom coordinates");
+          }
+          if (atom_name == "CA" && chain == chain_id) {
 
             if (residue_numbers.find(res_num) != residue_numbers.end() &&
                 seen_residues.find(res_num) == seen_residues.end()) {
@@ -130,7 +145,7 @@ public:
       }
       file.close();
     } else {
-      std::cout << "Unable to open file: " << pdb_filename << std::endl;
+      throw std::invalid_argument("Unable to open structure");
     }
 
     return coordinates;
@@ -173,21 +188,33 @@ convert_to_matrix(const std::vector<std::tuple<double, double, double>> &vec) {
   return matrix;
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[]) try {
   double sigma = 1.55 / sqrt(3);
   double c = 0;
   bool is_heuristic = false;
-  if (argc < 7) {
+  if (argc != 7) {
     std::cout << "Usage: " << argv[0]
               << " <pdb filename 1> <pdb filename 2> <chain_id 1> <chain id 2> "
                  "<information criterion> <exact or lh>\n";
-    return 1;
+    return 2;
   }
 
   std::string pdb_filename1 = argv[1];
   std::string pdb_filename2 = argv[2];
   std::string chain_id1 = argv[3];
   std::string chain_id2 = argv[4];
+  const auto valid_chain = [](const std::string &chain) {
+    return !chain.empty() && chain.size() <= 8 &&
+           std::all_of(chain.begin(), chain.end(), [](unsigned char ch) {
+             return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+                    (ch >= '0' && ch <= '9');
+           });
+  };
+  if (!valid_chain(chain_id1) || !valid_chain(chain_id2) ||
+      (std::string(argv[5]) != "aic" && std::string(argv[5]) != "bic") ||
+      (std::string(argv[6]) != "exact" && std::string(argv[6]) != "lh")) {
+    throw std::invalid_argument("Invalid estimation options");
+  }
   if (std::string(argv[6]) == "exact") {
     is_heuristic = false;
   } else if (std::string(argv[6]) == "lh") {
@@ -207,9 +234,9 @@ int main(int argc, char *argv[]) {
   p = convert_to_matrix(coordinatesP).transpose();
   q = convert_to_matrix(coordinatesQ).transpose();
   int total_residue_length = p.cols();
-  if (total_residue_length != q.cols()) {
-    std::cerr << "Protein length is different: " << p.cols() << " vs "
-              << q.cols() << std::endl;
+  if (total_residue_length == 0 || total_residue_length != q.cols() ||
+      coordinatesP.size() != intersected_res_numbers.size()) {
+    throw std::invalid_argument("Structures have no matching CA coordinates");
   }
   std::cout << "Protein length: " << total_residue_length << std::endl;
   std::vector<double> default_weights;
@@ -249,4 +276,7 @@ int main(int argc, char *argv[]) {
   std::cout << "The number of hinges is: " << hinge_cnt << std::endl;
   std::cout << "Hinge index is: " << hinge_index << std::endl;
   return 0;
+} catch (const std::exception &) {
+  std::cerr << "Invalid structure or estimation options" << std::endl;
+  return 2;
 }

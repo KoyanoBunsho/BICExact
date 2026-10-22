@@ -39,10 +39,10 @@ def run_fatcat(pair):
     pdb1 = pair["p_pdb"]
     pdb2 = pair["q_pdb"]
     output_filename = f"fatcat_result/{pdb1}_{pdb2}"
-    command = f"./FATCAT -p1 {pdb1}.pdb -p2 {pdb2}.pdb -o {output_filename} -m -ac -t"
+    command = ["./FATCAT", "-p1", f"{pdb1}.pdb", "-p2", f"{pdb2}.pdb", "-o", output_filename, "-m", "-ac", "-t"]
     start_time = time.time()
     try:
-        subprocess.run(command, shell=True, check=True)
+        subprocess.run(command, check=True)
         duration = time.time() - start_time
         print(f"Command executed successfully: {command}")
         return duration

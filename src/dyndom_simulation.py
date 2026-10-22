@@ -56,10 +56,10 @@ def make_dyndom_command_file(pdb1, pdb2, result_directory):
 
 
 def run_dyndom(command_file_path):
-    command = f"./DynDom {command_file_path}"
+    command = ["./DynDom", command_file_path]
     start_time = time.time()
     try:
-        subprocess.run(command, shell=True, check=True)
+        subprocess.run(command, check=True)
         duration = time.time() - start_time
         print(f"Command executed successfully: {command}")
         return duration
