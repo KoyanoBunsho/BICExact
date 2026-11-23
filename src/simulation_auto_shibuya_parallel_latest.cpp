@@ -1,8 +1,5 @@
 //go:build ignore
 
-#if defined(__GNUC__) && !defined(__clang__) && (defined(__x86_64__) || defined(__i386__))
-#pragma GCC target("avx2")
-#endif
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC optimize("unroll-loops")
 #endif
@@ -10,11 +7,8 @@
 #include "rmsd_io.h"
 #include "rmsd_struct.h"
 #include "rmsdh_new.h"
-#include <experimental/filesystem>
-#include <regex>
 #include <sstream>
 
-namespace fs = std::experimental::filesystem;
 std::string extractHingeIndices(const std::string &filename) {
   std::ifstream file(filename);
   if (!file.is_open()) {
@@ -38,34 +32,19 @@ std::string extractHingeIndices(const std::string &filename) {
   file.close();
   return "";
 }
-int main() {
-  std::string coord_path = "coord_csv_simulation/";
-  std::string simulation_data_path = "simulation_data/";
-  std::string simulation_data_info_path = "simulation_data_info/";
+int main() try {
   std::ofstream myfile;
+  int skipped = 0;
   double c = 0;
+  const auto file_triples = read_simulation_files("output_simulation_file.csv");
   myfile.open("rmsdh_result/simulation_auto_shibuya_parallel.csv");
+  if (!myfile) throw std::runtime_error("Cannot open results file");
   myfile << "p_pdb_id,Residue "
             "length,RMSD,RMSDh,actual_hinge_cnt,hinge_cnt,actual_hinge_indices,"
             "hinge_index,exec_time (s)"
          << std::endl;
 
-  std::ifstream input_file("output_simulation_file.csv");
-  std::string line;
-  std::getline(input_file, line);
-
-  std::vector<std::tuple<std::string, std::string, std::string>> file_triples;
-
-  while (std::getline(input_file, line)) {
-    std::stringstream ss(line);
-    std::string p_path, q_path, hinge_path;
-    getline(ss, p_path, ',');
-    getline(ss, q_path, ',');
-    getline(ss, hinge_path, ',');
-    file_triples.push_back(std::make_tuple(p_path, q_path, hinge_path));
-  }
-  omp_set_num_threads(40);
-#pragma omp parallel for
+#pragma omp parallel for reduction(+ : skipped)
   for (const auto &triple : file_triples) {
     std::string p_pdb_id =
         std::get<0>(triple).substr(std::get<0>(triple).find_last_of("/") + 1);
@@ -74,21 +53,15 @@ int main() {
     std::string hinge_file = std::get<2>(triple);
     std::string hingeIndices = extractHingeIndices(hinge_file);
     int total_residue_length = p.cols();
-    if (p.cols() != q.cols()) {
+    if (p.cols() == 0 || p.cols() != q.cols()) {
       std::cout << "p length: " << p.cols() << " q length: " << q.cols()
                 << std::endl;
-      std::cout << "The residue length is different" << std::endl;
-      continue;
-    }
-    if (p.cols() == 0) {
-      std::cout << "No data" << std::endl;
+      std::cerr << "Skipping empty, invalid, or mismatched coordinate matrices" << std::endl;
+      ++skipped;
       continue;
     }
     std::cout << total_residue_length << std::endl;
-    std::vector<double> default_weights;
-    for (int i = 0; i < total_residue_length; i++) {
-      default_weights.push_back(1.0);
-    }
+    std::vector<double> default_weights(total_residue_length, 1.0);
     ConformationPair PQ_pair = MoveToOrigin(p, q, default_weights);
     double rmsd_result = CalcRMSD(PQ_pair.P, PQ_pair.Q, default_weights);
     std::cout << p_pdb_id << std::endl;
@@ -121,4 +94,8 @@ int main() {
     }
   }
   myfile.close();
+  return myfile && skipped == 0 ? 0 : 2;
+} catch (const std::exception &err) {
+  std::cerr << "Invalid experiment input: " << err.what() << '\n';
+  return 2;
 }

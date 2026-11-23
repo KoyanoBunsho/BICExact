@@ -17,17 +17,17 @@
 <body>
     <h1>Hinge number estimation</h1>
     <form action="/upload" method="post" enctype="multipart/form-data">
-        <label for="file1">PDB File 1:</label>
-        <input type="file" name="file1" id="file1" required>
+        <label for="file1">Structure file 1:</label>
+        <input type="file" accept=".pdb,.ent,.cif" name="file1" id="file1" required>
         <br><br>
         <label for="chain1">Chain ID 1:</label>
-        <input type="text" name="chain1" id="chain1" required>
+        <input type="text" pattern="[A-Za-z0-9]{1,8}" maxlength="8" title="Use 1 to 8 ASCII letters or digits" name="chain1" id="chain1" required>
         <br><br>
-        <label for="file2">PDB File 2:</label>
-        <input type="file" name="file2" id="file2" required>
+        <label for="file2">Structure file 2:</label>
+        <input type="file" accept=".pdb,.ent,.cif" name="file2" id="file2" required>
         <br><br>
         <label for="chain2">Chain ID 2:</label>
-        <input type="text" name="chain2" id="chain2" required>
+        <input type="text" pattern="[A-Za-z0-9]{1,8}" maxlength="8" title="Use 1 to 8 ASCII letters or digits" name="chain2" id="chain2" required>
         <br><br>
         <label for="bic">Information Criterion:</label>
         <select name="bic" id="bic" required>

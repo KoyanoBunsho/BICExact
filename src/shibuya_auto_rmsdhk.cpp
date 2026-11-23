@@ -1,8 +1,5 @@
 //go:build ignore
 
-#if defined(__GNUC__) && !defined(__clang__) && (defined(__x86_64__) || defined(__i386__))
-#pragma GCC target("avx2")
-#endif
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC optimize("unroll-loops")
 #endif
@@ -11,17 +8,13 @@
 #include "rmsd_struct.h"
 #include "rmsdh_new.h"
 
-int main() {
-  std::vector<std::pair<std::string, std::string>> pair_data;
+int main() try {
   std::string coord_path = "coord_csv/";
   std::ofstream myfile;
-  std::vector<std::vector<std::string>> pdb_chain_data;
-  read_csv(pdb_chain_data, "pdb_12_with_hinges.csv");
-  std::vector<std::pair<std::string, std::string>> pdb_pair_vec;
-  for (const auto &pdb_chain : pdb_chain_data) {
-    pdb_pair_vec.push_back(std::make_pair(pdb_chain[0], pdb_chain[1]));
-  }
+  int skipped = 0;
+  const auto pdb_pair_vec = read_structure_pairs("pdb_12_with_hinges.csv");
   myfile.open("rmsdh_result/shibuya_auto_rmsdhk.csv");
+  if (!myfile) throw std::runtime_error("Cannot open results file");
   myfile << "p_pdb_id,q_pdb_id,Residue "
             "length,RMSD,RMSDh,hinge_cnt,hinge_index,exec_time (s)"
          << std::endl;
@@ -41,17 +34,15 @@ int main() {
     q = openMatrixData(coord_path + "coord_" + q_pdb_id + "_" + q_chain_id +
                        "_" + p_pdb_id + "_" + p_chain_id + ".csv");
     int total_residue_length = p.cols();
-    if (p.cols() != q.cols()) {
+    if (p.cols() == 0 || p.cols() != q.cols()) {
       std::cout << "p length: " << p.cols() << " q length: " << q.cols()
                 << std::endl;
-      std::cout << "The residue length is different" << std::endl;
+      std::cerr << "Skipping empty, invalid, or mismatched coordinate matrices" << std::endl;
+      ++skipped;
       continue;
     }
     std::cout << total_residue_length << std::endl;
-    std::vector<double> default_weights;
-    for (int i = 0; i < total_residue_length; i++) {
-      default_weights.push_back(1.0);
-    }
+    std::vector<double> default_weights(total_residue_length, 1.0);
     ConformationPair PQ_pair = MoveToOrigin(p, q, default_weights);
     double rmsd_result = CalcRMSD(PQ_pair.P, PQ_pair.Q, default_weights);
     myfile << p_pdb_id << "," << q_pdb_id << ",";
@@ -80,4 +71,8 @@ int main() {
            << exec_time_s << std::endl;
   }
   myfile.close();
+  return myfile && skipped == 0 ? 0 : 2;
+} catch (const std::exception &err) {
+  std::cerr << "Invalid experiment input: " << err.what() << '\n';
+  return 2;
 }

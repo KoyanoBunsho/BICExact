@@ -38,7 +38,7 @@ const initialForm: FormState = {
 const examples = [
   { label: 'Criterion', value: 'BIC / AIC' },
   { label: 'Method', value: 'Exact / LH' },
-  { label: 'Input', value: 'Two PDB conformations' },
+  { label: 'Input', value: 'Two PDB or mmCIF structures' },
 ];
 
 function App() {
@@ -55,7 +55,8 @@ function App() {
   );
 
   const setFile = (key: 'file1' | 'file2') => (event: ChangeEvent<HTMLInputElement>) => {
-    setForm((current) => ({ ...current, [key]: event.target.files?.[0] ?? null }));
+    const file = event.currentTarget.files?.[0] ?? null;
+    setForm((current) => ({ ...current, [key]: file }));
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -124,13 +125,13 @@ function App() {
       </section>
 
       <section className="workspace" aria-label="Estimator">
-        <form className="panel estimator" onSubmit={submit}>
+        <form className="panel estimator" onSubmit={submit} onReset={reset}>
           <div className="panel-header">
             <div>
               <span className="section-kicker">Run estimation</span>
               <h2>Upload structures</h2>
             </div>
-            <button className="icon-button" type="button" onClick={reset} title="Reset form">
+            <button className="icon-button" type="reset" disabled={isSubmitting} title="Reset form">
               <RotateCcw size={18} aria-hidden="true" />
             </button>
           </div>
@@ -138,13 +139,13 @@ function App() {
           <div className="upload-grid">
             <FileInput
               id="file1"
-              label="PDB file 1"
+              label="Structure file 1"
               file={form.file1}
               onChange={setFile('file1')}
             />
             <FileInput
               id="file2"
-              label="PDB file 2"
+              label="Structure file 2"
               file={form.file2}
               onChange={setFile('file2')}
             />
@@ -156,6 +157,8 @@ function App() {
               <input
                 value={form.chain1}
                 maxLength={8}
+                pattern="[A-Za-z0-9]{1,8}"
+                title="Use 1 to 8 ASCII letters or digits"
                 onChange={(event) => setForm({ ...form, chain1: event.target.value })}
                 required
               />
@@ -165,6 +168,8 @@ function App() {
               <input
                 value={form.chain2}
                 maxLength={8}
+                pattern="[A-Za-z0-9]{1,8}"
+                title="Use 1 to 8 ASCII letters or digits"
                 onChange={(event) => setForm({ ...form, chain2: event.target.value })}
                 required
               />
@@ -262,8 +267,8 @@ function FileInput({ id, label, file, onChange }: FileInputProps) {
     <label className="file-drop" htmlFor={id}>
       <FileUp size={24} aria-hidden="true" />
       <span>{label}</span>
-      <strong>{file?.name ?? 'Choose PDB file'}</strong>
-      <input id={id} type="file" accept=".pdb,.ent,.txt" onChange={onChange} required />
+      <strong>{file?.name ?? 'Choose PDB or mmCIF file'}</strong>
+      <input id={id} type="file" accept=".pdb,.ent,.cif" onChange={onChange} required />
     </label>
   );
 }

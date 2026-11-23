@@ -20,7 +20,7 @@ The repository includes a React + TypeScript frontend and a Go backend.
 - API endpoint: `POST /api/estimate`
 
 ### Prerequisites
-- Go 1.26.10+ (use a supported release with current security patches)
+- Go 1.26.11+ (use a supported release with current security patches)
 - Node.js and npm
 - A C++14 compiler with OpenMP support
   - Linux/Docker: `g++`
@@ -94,6 +94,8 @@ docker build --platform linux/amd64 -t bicexact:amd64 .
 
 Both upload endpoints accept a maximum of 64 MiB per request, two concurrent requests, and a 30-second calculation timeout. Uploads must be nonempty `.pdb`, `.ent`, or `.cif` files; chain IDs contain 1–8 ASCII letters or digits. Structures must have matching CA coordinates and at most 10,000 CA residues in each selected chain. Cross-origin browser submissions are rejected. Invalid inputs return 400, oversized requests 413, busy capacity 503, and calculation timeouts 504.
 
+Structure files must use lines shorter than 1 MiB. The estimator uses the first model and the first CA record for each residue in that model. It matches residues by identifier in sequence order, including PDB insertion codes such as `45A`. When comparing two mmCIF files, use label chain IDs and residue numbers where available. For a mixed PDB/mmCIF pair, use the author IDs and numbering in the mmCIF file when available.
+
 Run the regression tests after building the estimator:
 
 ```bash
@@ -114,7 +116,7 @@ cd ..
 uv run --with pip-audit scripts/audit_python_dependencies.py
 ```
 
-The 2026-10-22 audit found no npm or Python vulnerabilities and no vulnerabilities in imported Go packages. Go still reports [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) at module level: the unmaintained `golang.org/x/crypto/openpgp` package has no fixed version. This application does not import that package; `govulncheck` reports no reachable affected symbols. These checks do not constitute an OS package vulnerability scan.
+The 2026-11-23 checks with npm audit, pip-audit, and govulncheck reported no known vulnerabilities in the checked dependencies or Go standard library.
 
 ## Experiments
 - Stop the web container before starting the research container, which also uses the name `bel`. The research environment includes compilers, Python 3.12, and Poetry 2.2.1 and mounts `src/` for experiment outputs.

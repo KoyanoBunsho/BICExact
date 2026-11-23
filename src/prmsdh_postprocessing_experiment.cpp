@@ -1,8 +1,5 @@
 //go:build ignore
 
-#if defined(__GNUC__) && !defined(__clang__) && (defined(__x86_64__) || defined(__i386__))
-#pragma GCC target("avx2")
-#endif
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC optimize("unroll-loops")
 #endif
@@ -11,12 +8,9 @@
 #include "rmsd_struct.h"
 #include "rmsdh_new.h"
 
-int main(int argc, char **argv) {
-  if (argc < 2) {
-    std::cout << "Input parameter" << std::endl;
-    return 0;
-  }
-  double sigma = std::stod(argv[1]) / sqrt(3);
+int main(int argc, char **argv) try {
+  if (argc != 4) throw std::invalid_argument("Expected sigma, dataset, and method");
+  const double sigma = read_sigma(argv[1]);
   bool is_heuristic = false;
   std::string coord_path;
   std::string database_path;
@@ -32,7 +26,7 @@ int main(int argc, char **argv) {
     database_path = "pdb_12_with_hinges.csv";
     save_database_name = "shibuya";
   } else {
-    std::cerr << "Choose dyndom or shibuya" << std::endl;
+    throw std::invalid_argument("Choose dyndom or shibuya");
   }
   if (std::string(argv[3]) == "aic") {
     save_method_name = "rmsdh_aic";
@@ -44,18 +38,17 @@ int main(int argc, char **argv) {
   } else if (std::string(argv[3]) == "lh_bic") {
     save_method_name = "fast_rmsdh_bic";
     is_heuristic = true;
+  } else {
+    throw std::invalid_argument("Unknown estimation method");
   }
   std::ofstream myfile;
-  std::vector<std::vector<std::string>> pdb_chain_data;
-  read_csv(pdb_chain_data, database_path);
-  std::vector<std::pair<std::string, std::string>> pdb_pair_vec;
-  for (const auto &pdb_chain : pdb_chain_data) {
-    pdb_pair_vec.push_back(std::make_pair(pdb_chain[0], pdb_chain[1]));
-  }
+  int skipped = 0;
+  const auto pdb_pair_vec = read_structure_pairs(database_path);
   std::string save_name = "rmsdh_result/" + save_database_name + "_" +
                           save_method_name + "_" + std::to_string(sigma) +
                           ".csv";
   myfile.open(save_name);
+  if (!myfile) throw std::runtime_error("Cannot open results file");
   myfile << "p_pdb_id,q_pdb_id,Residue "
             "length,RMSD,RMSDh,c,hinge_cnt,hinge_index,exec_time (s)"
          << std::endl;
@@ -78,21 +71,15 @@ int main(int argc, char **argv) {
     q = openMatrixData(coord_path + "coord_" + q_pdb_id + "_" + q_chain_id +
                        "_" + p_pdb_id + "_" + p_chain_id + ".csv");
     int total_residue_length = p.cols();
-    if (p.cols() != q.cols()) {
+    if (p.cols() == 0 || p.cols() != q.cols()) {
       std::cout << "p length: " << p.cols() << " q length: " << q.cols()
                 << std::endl;
-      std::cout << "The residue length is different" << std::endl;
+      std::cerr << "Skipping empty, invalid, or mismatched coordinate matrices" << std::endl;
+      ++skipped;
       continue;
     }
     std::cout << total_residue_length << std::endl;
-    if (total_residue_length == 0) {
-      std::cout << "No data" << std::endl;
-      continue;
-    }
-    std::vector<double> default_weights;
-    for (int i = 0; i < total_residue_length; i++) {
-      default_weights.push_back(1.0);
-    }
+    std::vector<double> default_weights(total_residue_length, 1.0);
     ConformationPair PQ_pair = MoveToOrigin(p, q, default_weights);
     double rmsd_result = CalcRMSD(PQ_pair.P, PQ_pair.Q, default_weights);
     myfile << p_pdb_chain_id << "," << q_pdb_chain_id << ",";
@@ -135,4 +122,8 @@ int main(int argc, char **argv) {
            << "," << exec_time_s << std::endl;
   }
   myfile.close();
+  return myfile && skipped == 0 ? 0 : 2;
+} catch (const std::exception &err) {
+  std::cerr << "Invalid experiment input: " << err.what() << '\n';
+  return 2;
 }

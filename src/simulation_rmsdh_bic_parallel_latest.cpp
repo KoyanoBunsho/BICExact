@@ -1,8 +1,5 @@
 //go:build ignore
 
-#if defined(__GNUC__) && !defined(__clang__) && (defined(__x86_64__) || defined(__i386__))
-#pragma GCC target("avx2")
-#endif
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC optimize("unroll-loops")
 #endif
@@ -10,11 +7,8 @@
 #include "rmsd_io.h"
 #include "rmsd_struct.h"
 #include "rmsdh_new.h"
-#include <experimental/filesystem>
-#include <regex>
 #include <sstream>
 
-namespace fs = std::experimental::filesystem;
 std::string extractHingeIndices(const std::string &filename) {
   std::ifstream file(filename);
   if (!file.is_open()) {
@@ -39,18 +33,13 @@ std::string extractHingeIndices(const std::string &filename) {
   return "";
 }
 
-int main(int argc, char **argv) {
-  double sigma = 1.002;
+int main(int argc, char **argv) try {
+  if (argc != 4) throw std::invalid_argument("Expected sigma, method, and simulation CSV");
+  const double sigma = read_sigma(argv[1]);
   bool is_heuristic = false;
   std::string save_method_name;
-  double c = 0;
-  if (argc > 1) {
-    sigma = std::stod(argv[1]) / sqrt(3);
-  }
-  std::string coord_path = "coord_csv_simulation/";
   std::ofstream myfile;
-  std::string simulation_data_path = "simulation_data/";
-  std::string simulation_data_info_path = "simulation_data_info/";
+  int skipped = 0;
   if (std::string(argv[2]) == "aic") {
     save_method_name = "rmsdh_aic";
   } else if (std::string(argv[2]) == "bic") {
@@ -61,29 +50,22 @@ int main(int argc, char **argv) {
   } else if (std::string(argv[2]) == "lh_bic") {
     save_method_name = "fast_rmsdh_bic";
     is_heuristic = true;
+  } else {
+    throw std::invalid_argument("Unknown estimation method");
   }
   std::string input_file_path = std::string(argv[3]);
-  std::ifstream input_file(input_file_path);
+  const auto file_triples = read_simulation_files(input_file_path);
   std::string save_name = "rmsdh_result/simulation_parallel_" +
                           save_method_name + "_" + std::to_string(sigma) +
-                          input_file_path;
+                          input_file_path.substr(input_file_path.find_last_of("/")+1);
   myfile.open(save_name);
+  if (!myfile) throw std::runtime_error("Cannot open results file");
   myfile << "p_pdb_id,Residue "
             "length,RMSD,RMSDh,c,actual_hinge_cnt,hinge_cnt,actual_hinge_"
             "indices,hinge_index,exec_time (s)"
          << std::endl;
-  std::string line;
-  std::getline(input_file, line);
-  std::vector<std::tuple<std::string, std::string, std::string>> file_triples;
-  while (std::getline(input_file, line)) {
-    std::stringstream ss(line);
-    std::string p_path, q_path, hinge_path;
-    getline(ss, p_path, ',');
-    getline(ss, q_path, ',');
-    getline(ss, hinge_path, ',');
-    file_triples.push_back(std::make_tuple(p_path, q_path, hinge_path));
-  }
-#pragma omp parallel for
+  const bool use_bic = std::string(argv[2]) == "bic" || std::string(argv[2]) == "lh_bic";
+#pragma omp parallel for reduction(+ : skipped)
   for (const auto &triple : file_triples) {
     std::string p_pdb_id =
         std::get<0>(triple).substr(std::get<0>(triple).find_last_of("/") + 1);
@@ -92,34 +74,20 @@ int main(int argc, char **argv) {
     std::string hinge_file = std::get<2>(triple);
     std::string hingeIndices = extractHingeIndices(hinge_file);
     int total_residue_length = p.cols();
-    if (p.cols() != q.cols()) {
+    if (p.cols() == 0 || p.cols() != q.cols()) {
       std::cout << "p length: " << p.cols() << " q length: " << q.cols()
                 << std::endl;
-      std::cout << "The residue length is different" << std::endl;
-      continue;
-    }
-    if (p.cols() == 0) {
-      std::cout << "No data" << std::endl;
+      std::cerr << "Skipping empty, invalid, or mismatched coordinate matrices" << std::endl;
+      ++skipped;
       continue;
     }
     std::cout << total_residue_length << std::endl;
-    std::vector<double> default_weights;
-    for (int i = 0; i < total_residue_length; i++) {
-      default_weights.push_back(1.0);
-    }
+    std::vector<double> default_weights(total_residue_length, 1.0);
     ConformationPair PQ_pair = MoveToOrigin(p, q, default_weights);
     double rmsd_result = CalcRMSD(PQ_pair.P, PQ_pair.Q, default_weights);
     std::cout << p_pdb_id << std::endl;
     auto start = std::chrono::high_resolution_clock::now();
-    if (std::string(argv[2]) == "aic") {
-      c = 2 * sigma * sigma * (7);
-    } else if (std::string(argv[2]) == "bic") {
-      c = sigma * sigma * (3 + 4) * log(total_residue_length);
-    } else if (std::string(argv[2]) == "lh_aic") {
-      c = 2 * sigma * sigma * (7);
-    } else if (std::string(argv[2]) == "lh_bic") {
-      c = sigma * sigma * (3 + 4) * log(total_residue_length);
-    }
+    const double c = 7 * sigma * sigma * (use_bic ? std::log(total_residue_length) : 2.0);
     ProteinRMSDhinge rmsdh_calculator(PQ_pair.P, PQ_pair.Q, c);
     RMSDhHingeCnt rmsdh_hinge_cnt_result;
     if (is_heuristic) {
@@ -153,4 +121,8 @@ int main(int argc, char **argv) {
     }
   }
   myfile.close();
+  return myfile && skipped == 0 ? 0 : 2;
+} catch (const std::exception &err) {
+  std::cerr << "Invalid experiment input: " << err.what() << '\n';
+  return 2;
 }

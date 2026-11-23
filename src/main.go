@@ -99,7 +99,9 @@ func frontendDistDir() string {
 }
 
 const maxUploadBytes = 64 << 20
-const maxOutputBytes = 64 << 10
+
+// Up to 10,000 signed 32-bit residue numbers, insertion codes and separators.
+const maxOutputBytes = 160 << 10
 
 var chainPattern = regexp.MustCompile(`^[A-Za-z0-9]{1,8}$`)
 
@@ -117,6 +119,9 @@ func (s *estimateService) runEstimate(c *gin.Context) (estimateResult, int, stri
 	default:
 		c.Header("Retry-After", "5")
 		return estimateResult{}, http.StatusServiceUnavailable, "Server is busy; please retry shortly"
+	}
+	if c.Request.ContentLength > maxUploadBytes {
+		return estimateResult{}, http.StatusRequestEntityTooLarge, "Upload exceeds the 64 MiB limit"
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUploadBytes)
 	if err := c.Request.ParseMultipartForm(1 << 20); err != nil {

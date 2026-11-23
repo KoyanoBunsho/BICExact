@@ -304,126 +304,64 @@ public:
 class ProteinRMSDhinge {
 public:
   ProteinRMSDhinge(const Eigen::Matrix3Xd &A, const Eigen::Matrix3Xd &B,
-                   const double c) {
-    assert(A.cols() == B.cols());
-    int n = A.cols();
-    this->A = A;
-    this->B = B;
-    this->n = n;
-    this->c = c;
-    this->aTa_acc = std::vector<double>(n + 1);
-    this->bTb_acc = std::vector<double>(n + 1);
-    this->baT_acc = std::vector<Eigen::Matrix3Xd>(n + 1);
-    this->a_acc = std::vector<Eigen::Vector3d>(n + 1);
-    this->b_acc = std::vector<Eigen::Vector3d>(n + 1);
-    this->a_acc[0] = Eigen::Vector3d::Zero(3);
-    this->b_acc[0] = Eigen::Vector3d::Zero(3);
-    this->aTa_acc[0] = 0;
-    this->bTb_acc[0] = 0;
-    this->baT_acc[0] = Eigen::MatrixXd::Zero(3, 3);
-    this->A_T = A.transpose();
-    this->B_T = B.transpose();
+                   const double c)
+      : n(A.cols()), aTa_acc(n + 1, 0), bTb_acc(n + 1, 0), baT_acc(n + 1),
+        a_acc(n + 1), b_acc(n + 1), c(c) {
+    if (n == 0 || n != B.cols())
+      throw std::invalid_argument("Expected matching nonempty coordinate matrices");
+    a_acc[0].setZero();
+    b_acc[0].setZero();
+    baT_acc[0].setZero();
     for (int i = 0; i < n; i++) {
-      this->a_acc[i + 1] = this->a_acc[i] + this->A.col(i);
-      this->b_acc[i + 1] = this->b_acc[i] + this->B.col(i);
-      this->aTa_acc[i + 1] =
-          this->aTa_acc[i] + this->A_T.row(i) * this->A.col(i);
-      this->bTb_acc[i + 1] =
-          this->bTb_acc[i] + this->B_T.row(i) * this->B.col(i);
-      this->baT_acc[i + 1] =
-          this->baT_acc[i] + this->B.col(i) * this->A_T.row(i);
+      const auto a = A.col(i), b = B.col(i);
+      a_acc[i + 1] = a_acc[i] + a;
+      b_acc[i + 1] = b_acc[i] + b;
+      aTa_acc[i + 1] = aTa_acc[i] + a.squaredNorm();
+      bTb_acc[i + 1] = bTb_acc[i] + b.squaredNorm();
+      baT_acc[i + 1] = baT_acc[i] + b * a.transpose();
     }
   }
   bool left_is_leq_right(double left, double right) {
     return left - right <= DBL_EPSILON * fmax(1, fmax(fabs(left), fabs(right)));
   }
-  inline Eigen::Vector3d
-  calcCentroid(const std::vector<Eigen::Vector3d> &val_acc, int i, int j) {
-    /*
-    Calculate the centroid of a 3d structure in constant time
-    val_acc: Accumulative sum of 3d vector
-    val_acc[j] - val_acc[i - 1] represents the sum of 3d vecor from the i to j
-    Centroid is the average coordinate of all coordinates betwee i and j
-    */
-    Eigen::Vector3d val_bar = (val_acc[j] - val_acc[i - 1]) / (j - i + 1);
-    return val_bar;
-  }
-
-  inline double calcSubSD(const double &pTp_sub, const double &qTq_sub,
-                          const Eigen::Matrix3Xd &H_sub,
-                          const bool showR = false) {
-    /*
-    Calculate SD of a coordination pair between the index i and j
-    sd = p^Tp + q^Tq - 2 trace(RH)
-    */
-    Eigen::JacobiSVD<Eigen::MatrixXd> svd(H_sub, Eigen::ComputeThinU |
-                                                     Eigen::ComputeThinV);
-    Eigen::Matrix3d I = Eigen::Matrix3d::Identity(3, 3);
-    Eigen::Matrix3d V = svd.matrixV();
-    Eigen::Matrix3d U_T = svd.matrixU().transpose();
-    double d = (V * U_T).determinant();
-    (d > 0.0) ? d = 1.0 : d = -1.0;
-    I(2, 2) = d;
-    Eigen::MatrixXd RH = V * I * U_T * H_sub; // R = V * I * U_T
-    if (showR) {
-      Eigen::MatrixXd R = V * I * U_T;
-      std::cout << "Euler angle" << std::endl;
-      std::cout << rotationMatrixToEulerAngles(R) << std::endl;
-    }
-    double sub_sd = pTp_sub + qTq_sub - 2 * RH.trace();
-    if (sub_sd <= 0.0) {
-      sub_sd = 0.0;
-    }
-    return sub_sd;
-  }
-
   inline double calcSDij(int i, int j, bool showV = false) {
-    double aTa_sub = aTa_acc[j] - aTa_acc[i - 1];
-    double bTb_sub = bTb_acc[j] - bTb_acc[i - 1];
-    Eigen::Matrix3d baT_sub = baT_acc[j] - baT_acc[i - 1];
-    Eigen::Vector3d a_sub = a_acc[j] - a_acc[i - 1];
-    Eigen::Vector3d b_sub = b_acc[j] - b_acc[i - 1];
-    Eigen::Vector3d a_bar = calcCentroid(a_acc, i, j);
-    Eigen::Vector3d b_bar = calcCentroid(b_acc, i, j);
-    // Covariance is always 3x3. Keep both dimensions fixed so Eigen's
-    // vectorized outer products have compile-time bounds on x86 as well.
-    Eigen::Matrix3d H_sub = baT_sub - b_sub * a_bar.transpose() -
-                           b_bar * a_sub.transpose() +
-                           (j - i + 1) * b_bar * a_bar.transpose();
-    double pTp_sub = aTa_sub - a_sub.transpose() * a_bar -
-                     a_bar.transpose() * a_sub +
-                     (j - i + 1) * a_bar.transpose() * a_bar;
-    double qTq_sub = bTb_sub - b_sub.transpose() * b_bar -
-                     b_bar.transpose() * b_sub +
-                     (j - i + 1) * b_bar.transpose() * b_bar;
+    if (j <= i && !showV) return 0.0;
+    const double count = j - i + 1;
+    const Eigen::Vector3d a = a_acc[j] - a_acc[i - 1];
+    const Eigen::Vector3d b = b_acc[j] - b_acc[i - 1];
+    const Eigen::Matrix3d H = baT_acc[j] - baT_acc[i - 1] -
+                              (b / count) * a.transpose();
+    const double pTp = aTa_acc[j] - aTa_acc[i - 1] - a.squaredNorm() / count;
+    const double qTq = bTb_acc[j] - bTb_acc[i - 1] - b.squaredNorm() / count;
+    Eigen::JacobiSVD<Eigen::Matrix3d, Eigen::NoQRPreconditioner> svd(
+        H, showV ? Eigen::ComputeFullU | Eigen::ComputeFullV : 0);
+    // The maximum trace over proper rotations is s1 + s2 + sign(det H) * s3.
+    const auto &s = svd.singularValues();
+    const double sign = H.determinant() < 0 ? -1.0 : 1.0;
     if (showV) {
       std::cout << "i: " << i << ", j: " << j << std::endl;
-      std::cout << "Translation vector" << std::endl;
-      std::cout << b_bar - a_bar << std::endl;
+      std::cout << "Translation vector" << std::endl << (b - a) / count << std::endl;
+      Eigen::Matrix3d V = svd.matrixV();
+      const Eigen::Matrix3d U_T = svd.matrixU().transpose();
+      if ((V * U_T).determinant() < 0) V.col(2) *= -1;
+      std::cout << "Euler angle" << std::endl << rotationMatrixToEulerAngles(V * U_T) << std::endl;
     }
-    double sub_sd_ij = calcSubSD(pTp_sub, qTq_sub, H_sub, showV);
-    return sub_sd_ij;
+    return std::max(0.0, pTp + qTq - 2 * (s[0] + s[1] + sign * s[2]));
   }
-  int backTrackDP(std::vector<int> backtracking_table,
+
+  int backTrackDP(const std::vector<int> &backtracking_table,
                   std::vector<int> &hinge_index_vec, int hinge_index,
                   int hinge_cnt) {
-    /*
-    Backtrack the DP table from the index n
-    DP definition is as follows.
-    OPT(j) = min_{1 <= i <= j} {sd_{ij} + c + OPT(i - 1)}
-    Referring to the OPT table, find the chosen hinge index if a hinge exists
-    */
-
-    int new_hinge_index = backtracking_table[hinge_index - 1];
-    if (new_hinge_index == 1 || new_hinge_index == hinge_index) {
-      return hinge_cnt;
-    } else {
-      hinge_cnt++;
-      hinge_index_vec.push_back(new_hinge_index);
-      hinge_cnt = backTrackDP(backtracking_table, hinge_index_vec,
-                              new_hinge_index, hinge_cnt);
-      return hinge_cnt;
+    while (hinge_index > 1) {
+      const int previous = backtracking_table.at(hinge_index - 1);
+      if (previous == 1 || previous == hinge_index) break;
+      if (previous < 1 || previous > hinge_index)
+        throw std::logic_error("Invalid backtracking index");
+      hinge_index_vec.push_back(previous);
+      ++hinge_cnt;
+      hinge_index = previous;
     }
+    return hinge_cnt;
   }
   void initializeDPandBackTrackingTable(
       std::vector<std::vector<double>> &dp,
@@ -438,7 +376,7 @@ public:
     }
   }
   std::vector<int>
-  backTrackDPKFor(std::vector<std::vector<int>> backtracking_table,
+  backTrackDPKFor(const std::vector<std::vector<int>> &backtracking_table,
                   std::vector<int> &hinge_index_vec, int j_index,
                   int hinge_num) {
     for (int k = hinge_num; k > 0; k--) {
@@ -474,13 +412,14 @@ public:
     std::vector<int> hinge_index_vec;
     std::vector<std::vector<int>> backtracking_table(n + 1,
                                                      std::vector<int>(n + 1));
+    if (n == 1) return {0.0, 0, {}};
     initializeDPandBackTrackingTable(dp, backtracking_table);
     int k;
-    for (k = 1; k < n + 1; k++) {
-      for (int j = 1; j < n + 1; j++) {
+    for (k = 1; k < n; k++) {
+      for (int j = k + 1; j < n + 1; j++) {
         double ans = INF;
         int min_index = 1;
-        for (int i = k; i <= j; i++) {
+        for (int i = k + 1; i <= j; i++) {
           double sub_sd = calcSDij(i, j);
           if (sub_sd + dp[i - 1][k - 1] < ans) {
             ans = sub_sd + dp[i - 1][k - 1];
@@ -1387,7 +1326,7 @@ public:
     }
     long long monotonicity_cnt = 0;
     long long total_cnt = 0;
-#pragma omp parallel for reduction(+:monotonicity_cnt, total_cnt) num_threads(1000)
+#pragma omp parallel for reduction(+:monotonicity_cnt, total_cnt)
     for (int j = 2; j <= n; j++) {
       for (int i = 1; i < j; i++) {
         for (int l = 2; l < i; l++) {
@@ -1434,7 +1373,7 @@ public:
     }
     long long monotonicity_cnt = 0;
     long long total_cnt = 0;
-#pragma omp parallel for reduction(+:monotonicity_cnt, total_cnt) num_threads(1000)
+#pragma omp parallel for reduction(+:monotonicity_cnt, total_cnt)
     for (int j = 2; j <= n; j++) {
       for (int i = 1; i < j; i++) {
         for (int l = 2; l < i; l++) {
@@ -1487,7 +1426,7 @@ public:
       // std::cout << calcMongeRateFromMatrix(tmr_dp) << std::endl;
       long long monotonicity_cnt = 0;
       long long total_cnt = 0;
-#pragma omp parallel for reduction(+:monotonicity_cnt, total_cnt) num_threads(1000)
+#pragma omp parallel for reduction(+:monotonicity_cnt, total_cnt)
       for (int j = 2; j <= n; j++) {
         for (int i = 1; i < j; i++) {
           for (int l = 2; l < i; l++) {
@@ -1522,18 +1461,16 @@ public:
   }
 
 private:
-  Eigen::Matrix3Xd A, B;
   int n;
   std::vector<double> aTa_acc, bTb_acc;
-  std::vector<Eigen::Matrix3Xd> baT_acc;
+  std::vector<Eigen::Matrix3d> baT_acc;
   std::vector<Eigen::Vector3d> a_acc, b_acc;
-  Eigen::MatrixXd A_T, B_T;
   double c;
 };
 
-double CalcSD(Eigen::Matrix3Xd P, Eigen::Matrix3Xd Q, std::vector<double> W) {
-  if (P.cols() != Q.cols()) {
-    throw "CalcRMSD(): input data mis-match";
+double CalcSD(const Eigen::Matrix3Xd &P, const Eigen::Matrix3Xd &Q, const std::vector<double> &W) {
+  if (P.cols() == 0 || P.cols() != Q.cols() || W.size() != static_cast<size_t>(P.cols())) {
+    throw std::invalid_argument("Invalid coordinates or weights");
   }
   Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3, 3);
   Eigen::Matrix3d I = Eigen::Matrix3d::Identity(3, 3);
@@ -1562,7 +1499,7 @@ double CalcSD(Eigen::Matrix3Xd P, Eigen::Matrix3Xd Q, std::vector<double> W) {
   return sd;
 }
 
-double CalcRMSD(Eigen::Matrix3Xd P, Eigen::Matrix3Xd Q, std::vector<double> W) {
+double CalcRMSD(const Eigen::Matrix3Xd &P, const Eigen::Matrix3Xd &Q, const std::vector<double> &W) {
   double sd = CalcSD(P, Q, W);
   double rmsd_result;
   int p_cols_num = P.cols();
@@ -1570,8 +1507,10 @@ double CalcRMSD(Eigen::Matrix3Xd P, Eigen::Matrix3Xd Q, std::vector<double> W) {
   return rmsd_result;
 }
 
-ConformationPair MoveToOrigin(Eigen::Matrix3Xd P, Eigen::Matrix3Xd Q,
-                              std::vector<double> W) {
+ConformationPair MoveToOrigin(const Eigen::Matrix3Xd &P, const Eigen::Matrix3Xd &Q,
+                              const std::vector<double> &W) {
+  if (P.cols() == 0 || P.cols() != Q.cols() || W.size() != static_cast<size_t>(P.cols()))
+    throw std::invalid_argument("Invalid coordinates or weights");
   Eigen::Vector3d p{0, 0, 0}, q{0, 0, 0};
   ConformationPair PQ_pair;
   double w_sum = 0.0;
@@ -1579,16 +1518,15 @@ ConformationPair MoveToOrigin(Eigen::Matrix3Xd P, Eigen::Matrix3Xd Q,
   for (int i = 0; i < p_cols_num; i++) {
     w_sum += W[i];
   }
+  if (!std::isfinite(w_sum) || w_sum <= 0) throw std::invalid_argument("Invalid weight sum");
   for (int i = 0; i < p_cols_num; i++) {
     p += (W[i] * P.col(i)) / w_sum;
   }
   for (int i = 0; i < p_cols_num; i++) {
     q += (W[i] * Q.col(i)) / w_sum;
   }
-  Eigen::Matrix3Xd X = P.colwise() - p;
-  Eigen::Matrix3Xd Y = Q.colwise() - q;
-  PQ_pair.P = X;
-  PQ_pair.Q = Y;
+  PQ_pair.P = P.colwise() - p;
+  PQ_pair.Q = Q.colwise() - q;
   return PQ_pair;
 }
 
